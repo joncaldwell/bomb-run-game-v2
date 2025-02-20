@@ -121,13 +121,64 @@ class PowerUp {
     }
 }
 
+class Paintball {
+    constructor(x, y, dx, dy, color) {
+        this.x = x;
+        this.y = y;
+        this.dx = dx;
+        this.dy = dy;
+        this.radius = 5;
+        this.color = color;
+        this.speed = 15;
+        this.active = true;
+    }
+
+    update() {
+        this.x += this.dx * this.speed;
+        this.y += this.dy * this.speed;
+
+        // Check if paintball is off screen
+        return this.x < 0 || this.x > canvas.width || 
+               this.y < 0 || this.y > canvas.height;
+    }
+
+    draw() {
+        if (!this.active) return;
+
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+
+        // Add paint splatter effect
+        const gradient = ctx.createRadialGradient(
+            this.x, this.y, 0,
+            this.x, this.y, this.radius * 2
+        );
+        gradient.addColorStop(0, `${this.color}44`);
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.fill();
+    }
+
+    checkCollision(player) {
+        if (!this.active || !player.alive || player.isRagdoll) return false;
+        const dx = this.x - player.x;
+        const dy = this.y - player.y;
+        return Math.sqrt(dx * dx + dy * dy) < (this.radius + player.radius);
+    }
+}
+
 class Player {
     constructor(x, y, color, controls, skin) {
         this.x = x;
         this.y = y;
         this.radius = 15;
         this.color = color;
-        this.controls = controls;
+        this.controls = {
+            ...controls,
+            shoot: controls.shoot || ' ' // Space for P1, Enter for P2
+        };
         this.baseSpeed = 5;
         this.speed = this.baseSpeed;
         this.alive = true;
@@ -147,6 +198,8 @@ class Player {
         this.gravity = 0.5;
         this.friction = 0.98;
         this.skin = skin || new PlayerSkin(color, this.darkenColor(color, 30), 'none');
+        this.lastShotTime = 0;
+        this.shootCooldown = 500; // 500ms between shots
     }
 
     update() {
@@ -443,6 +496,27 @@ class Player {
         }
     }
 
+    shoot() {
+        const now = Date.now();
+        if (now - this.lastShotTime < this.shootCooldown || !this.alive || this.isRagdoll) return;
+
+        // Calculate shot direction based on facing direction
+        const angle = this.facing > 0 ? 0 : Math.PI;
+        const dx = Math.cos(angle);
+        const dy = 0;
+
+        paintballs.push(new Paintball(
+            this.x + this.facing * this.radius,
+            this.y - this.radius / 2,
+            dx,
+            dy,
+            this.color
+        ));
+
+        this.lastShotTime = now;
+        sounds.playMove(); // Reuse move sound for now
+    }
+
     darkenColor(color, percent) {
         const num = parseInt(color.replace('#', ''), 16);
         const amt = Math.round(2.55 * percent);
@@ -669,20 +743,23 @@ const player1 = new Player(100, 300, '#007bff', {
     up: 'w',
     down: 's',
     left: 'a',
-    right: 'd'
+    right: 'd',
+    shoot: ' ' // Space bar
 }, new PlayerSkin('#007bff', '#0056b3', 'cape'));
 
 const player2 = new Player(700, 300, '#dc3545', {
     up: 'arrowup',
     down: 'arrowdown',
     left: 'arrowleft',
-    right: 'arrowright'
+    right: 'arrowright',
+    shoot: 'Enter'
 }, new PlayerSkin('#dc3545', '#b21f2d', 'glasses'));
 
 let bombs = [];
 let keys = {};
 let gameOver = false;
 let powerUps = [];
+let paintballs = [];
 
 function spawnBomb() {
     if (bombs.length < 5) {
@@ -753,13 +830,28 @@ function updateGame() {
     // Draw furniture
     furniture.forEach(f => f.draw());
 
-    // Draw and update power-ups
+    // Draw and update power-ups with collision detection
     powerUps = powerUps.filter(powerUp => {
         powerUp.draw();
+
+        // Check collision with players
+        if (powerUp.active) {
+            if (powerUp.checkCollision(player1)) {
+                console.log('Player 1 collected power-up:', powerUp.type);
+                player1.applyPowerUp(powerUp.type);
+                powerUp.active = false;
+                return false;
+            }
+            if (powerUp.checkCollision(player2)) {
+                console.log('Player 2 collected power-up:', powerUp.type);
+                player2.applyPowerUp(powerUp.type);
+                powerUp.active = false;
+                return false;
+            }
+        }
         return powerUp.active;
     });
 
-    // Update player positions and states
     player1.update();
     player2.update();
     player1.move(keys);
@@ -784,6 +876,29 @@ function updateGame() {
         return !finished;
     });
 
+    // Update paintballs
+    paintballs = paintballs.filter(paintball => {
+        paintball.draw();
+
+        // Check collisions with players
+        if (paintball.checkCollision(player1)) {
+            player1.hit(paintball.x, paintball.y, 60); // Use smaller explosion radius
+            paintball.active = false;
+            return false;
+        }
+        if (paintball.checkCollision(player2)) {
+            player2.hit(paintball.x, paintball.y, 60);
+            paintball.active = false;
+            return false;
+        }
+
+        return !paintball.update();
+    });
+
+    // Handle shooting
+    if (keys[player1.controls.shoot]) player1.shoot();
+    if (keys[player2.controls.shoot]) player2.shoot();
+
     // Update scores
     if ((player1.alive || player2.alive) && !gameOver) {
         if (player1.alive && !player1.isRagdoll) player1.score++;
@@ -800,7 +915,7 @@ window.addEventListener('keydown', (e) => {
     console.log('Key pressed:', e.key.toLowerCase());
     keys[e.key.toLowerCase()] = true;
     // Prevent default behavior for game controls
-    if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
+    if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'Enter'].includes(e.key.toLowerCase())) {
         e.preventDefault();
     }
 });
