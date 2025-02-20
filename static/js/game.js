@@ -809,11 +809,26 @@ function updateGame() {
 }
 
 window.addEventListener('keydown', (e) => {
+    console.log('Key pressed:', e.key.toLowerCase());
     keys[e.key.toLowerCase()] = true;
+    // Prevent default behavior for game controls
+    if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+    }
 });
 
 window.addEventListener('keyup', (e) => {
+    console.log('Key released:', e.key.toLowerCase());
     keys[e.key.toLowerCase()] = false;
+});
+
+// Ensure the game has focus
+canvas.tabIndex = 1;
+canvas.focus();
+
+// Initialize game
+canvas.addEventListener('click', () => {
+    canvas.focus();
 });
 
 setInterval(spawnBomb, 2000);
