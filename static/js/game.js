@@ -256,6 +256,19 @@ class Player {
             if (this.x < -50 || this.x > canvas.width + 50 ||
                 this.y < -50 || this.y > canvas.height + 50) {
                 this.alive = false;
+                // End game immediately when a player falls
+                gameOver = true;
+                sounds.playGameOver();
+                const gameOverDiv = document.getElementById('gameOver');
+                const winner = document.getElementById('winner');
+                gameOverDiv.classList.remove('d-none');
+
+                // Determine winner based on who's still alive
+                if (this === player1) {
+                    winner.textContent = "Player 2 Wins! Player 1 fell off the map!";
+                } else {
+                    winner.textContent = "Player 1 Wins! Player 2 fell off the map!";
+                }
             }
 
             // Add furniture collision for ragdoll state with bouncing
@@ -671,6 +684,8 @@ const furniture = [
 
 
 function updateGame() {
+    if (gameOver) return;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw furniture
@@ -728,23 +743,6 @@ function updateGame() {
 
         document.getElementById('score1').textContent = player1.score;
         document.getElementById('score2').textContent = player2.score;
-    }
-
-    if (!gameOver && (!player1.alive && !player2.alive)) {
-        gameOver = true;
-        sounds.playGameOver();
-        const gameOverDiv = document.getElementById('gameOver');
-        const winner = document.getElementById('winner');
-        gameOverDiv.classList.remove('d-none');
-
-        if (player1.score > player2.score) {
-            winner.textContent = "Player 1 Wins!";
-        } else if (player2.score > player1.score) {
-            winner.textContent = "Player 2 Wins!";
-        } else {
-            winner.textContent = "It's a Tie!";
-        }
-        return;
     }
 
     requestAnimationFrame(updateGame);
