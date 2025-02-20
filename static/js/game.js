@@ -12,34 +12,128 @@ class Player {
         this.speed = 5;
         this.alive = true;
         this.score = 0;
+        this.facing = 1; // 1 for right, -1 for left
+        this.walkFrame = 0;
+        this.lastMoveTime = 0;
     }
 
     draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        if (!this.facing) this.facing = 1;
+        ctx.scale(this.facing, 1);
+
+        // Body
+        const gradient = ctx.createLinearGradient(-this.radius, -this.radius * 2, this.radius, this.radius * 2);
+        gradient.addColorStop(0, this.color);
+        gradient.addColorStop(1, this.darkenColor(this.color, 30));
+
+        // Draw legs with walking animation
+        const legOffset = Math.sin(this.walkFrame) * 5;
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
+        ctx.moveTo(-5, 0);
+        ctx.lineTo(-8, 15 + (legOffset));
+        ctx.lineTo(-6, 25 + (legOffset));
+        ctx.moveTo(5, 0);
+        ctx.lineTo(8, 15 - (legOffset));
+        ctx.lineTo(6, 25 - (legOffset));
+        ctx.strokeStyle = this.darkenColor(this.color, 40);
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Torso
+        ctx.beginPath();
+        ctx.ellipse(0, -5, this.radius, this.radius * 1.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
         ctx.fill();
-        ctx.closePath();
+        ctx.strokeStyle = this.darkenColor(this.color, 20);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Arms
+        const armOffset = Math.cos(this.walkFrame) * 3;
+        ctx.beginPath();
+        ctx.moveTo(-this.radius, -5);
+        ctx.lineTo(-this.radius - 8, 5 + armOffset);
+        ctx.moveTo(this.radius, -5);
+        ctx.lineTo(this.radius + 8, 5 - armOffset);
+        ctx.strokeStyle = this.darkenColor(this.color, 40);
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(0, -this.radius - 10, this.radius * 0.7, 0, Math.PI * 2);
+        const headGradient = ctx.createRadialGradient(
+            -2, -this.radius - 12,
+            1,
+            0, -this.radius - 10,
+            this.radius * 0.7
+        );
+        headGradient.addColorStop(0, '#FFE0C4');
+        headGradient.addColorStop(1, '#FFB088');
+        ctx.fillStyle = headGradient;
+        ctx.fill();
+        ctx.strokeStyle = '#704214';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Eyes
+        const eyeOffset = this.facing * 2;
+        ctx.beginPath();
+        ctx.arc(-3 + eyeOffset, -this.radius - 10, 2, 0, Math.PI * 2);
+        ctx.arc(3 + eyeOffset, -this.radius - 10, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#000';
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    darkenColor(color, percent) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = (num >> 16) - amt;
+        const G = (num >> 8 & 0x00FF) - amt;
+        const B = (num & 0x0000FF) - amt;
+        return '#' + (1 << 24 | (R < 255 ? (R < 0 ? 0 : R) : 255) << 16 |
+            (G < 255 ? (G < 0 ? 0 : G) : 255) << 8 |
+            (B < 255 ? (B < 0 ? 0 : B) : 255)).toString(16).slice(1);
     }
 
     move(keys) {
         if (!this.alive) return;
 
+        let moving = false;
+
         if (keys[this.controls.up] && this.y > this.radius) {
             this.y -= this.speed;
-            sounds.playMove();
+            moving = true;
         }
         if (keys[this.controls.down] && this.y < canvas.height - this.radius) {
             this.y += this.speed;
-            sounds.playMove();
+            moving = true;
         }
         if (keys[this.controls.left] && this.x > this.radius) {
             this.x -= this.speed;
-            sounds.playMove();
+            this.facing = -1;
+            moving = true;
         }
         if (keys[this.controls.right] && this.x < canvas.width - this.radius) {
             this.x += this.speed;
-            sounds.playMove();
+            this.facing = 1;
+            moving = true;
+        }
+
+        // Update walking animation
+        if (moving) {
+            const now = Date.now();
+            if (now - this.lastMoveTime > 50) {
+                this.walkFrame += 0.3;
+                this.lastMoveTime = now;
+                sounds.playMove();
+            }
+        } else {
+            this.walkFrame = 0;
         }
     }
 }
