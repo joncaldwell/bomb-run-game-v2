@@ -52,22 +52,54 @@ class Bomb {
         this.exploding = false;
         this.explosionRadius = 0;
         this.maxExplosionRadius = 100;
-        this.explosionSpeed = 3;
+        this.explosionSpeed = 5;
+        this.fuseTime = 100;
+        this.currentFuseTime = this.fuseTime;
     }
 
     draw() {
         if (this.exploding) {
+            // Draw explosion
+            const gradient = ctx.createRadialGradient(
+                this.x, this.y, 0,
+                this.x, this.y, this.explosionRadius
+            );
+            gradient.addColorStop(0, 'rgba(255, 200, 0, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 100, 0, 0.6)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0.2)');
+
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.explosionRadius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 0, 0, ${1 - this.explosionRadius/this.maxExplosionRadius})`;
+            ctx.fillStyle = gradient;
             ctx.fill();
             ctx.closePath();
         } else {
+            // Draw bomb body
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = 'red';
+            ctx.fillStyle = '#333';
             ctx.fill();
             ctx.closePath();
+
+            // Draw fuse
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y - this.radius);
+            ctx.quadraticCurveTo(
+                this.x + 5, this.y - this.radius - 10,
+                this.x + 10, this.y - this.radius - 5
+            );
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw fuse spark
+            if (this.currentFuseTime % 10 < 5) {
+                ctx.beginPath();
+                ctx.arc(this.x + 10, this.y - this.radius - 5, 2, 0, Math.PI * 2);
+                ctx.fillStyle = 'yellow';
+                ctx.fill();
+                ctx.closePath();
+            }
         }
     }
 
@@ -75,6 +107,12 @@ class Bomb {
         if (this.exploding) {
             this.explosionRadius += this.explosionSpeed;
             return this.explosionRadius > this.maxExplosionRadius;
+        } else {
+            this.currentFuseTime--;
+            if (this.currentFuseTime <= 0) {
+                this.exploding = true;
+                sounds.playExplosion();
+            }
         }
         return false;
     }
@@ -108,12 +146,12 @@ function checkCollision(player, bomb) {
     if (!player.alive) return false;
 
     const distance = Math.sqrt(
-        Math.pow(player.x - bomb.x, 2) + 
+        Math.pow(player.x - bomb.x, 2) +
         Math.pow(player.y - bomb.y, 2)
     );
 
-    return bomb.exploding && 
-           distance < (player.radius + bomb.explosionRadius);
+    return bomb.exploding &&
+        distance < (player.radius + bomb.explosionRadius);
 }
 
 function updateGame() {
@@ -125,22 +163,22 @@ function updateGame() {
     player1.draw();
     player2.draw();
 
+    let shouldEndGame = false;
+
     bombs = bombs.filter(bomb => {
         bomb.draw();
-
-        if (!bomb.exploding && Math.random() < 0.01) {
-            bomb.exploding = true;
-            sounds.playExplosion();
-        }
+        const finished = bomb.update();
 
         if (checkCollision(player1, bomb)) {
             player1.alive = false;
+            shouldEndGame = true;
         }
         if (checkCollision(player2, bomb)) {
             player2.alive = false;
+            shouldEndGame = true;
         }
 
-        return !bomb.update();
+        return !finished;
     });
 
     if ((player1.alive || player2.alive) && !gameOver) {
@@ -151,7 +189,7 @@ function updateGame() {
         document.getElementById('score2').textContent = player2.score;
     }
 
-    if (!gameOver && (!player1.alive && !player2.alive)) {
+    if (!gameOver && (shouldEndGame || (!player1.alive && !player2.alive))) {
         gameOver = true;
         sounds.playGameOver();
         const gameOverDiv = document.getElementById('gameOver');
@@ -165,6 +203,7 @@ function updateGame() {
         } else {
             winner.textContent = "It's a Tie!";
         }
+        return;
     }
 
     requestAnimationFrame(updateGame);
