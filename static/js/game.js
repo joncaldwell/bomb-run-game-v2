@@ -44,62 +44,103 @@ class Player {
     }
 }
 
-class Bomb {
+class Grenade {
     constructor() {
         this.x = Math.random() * (canvas.width - 20) + 10;
         this.y = Math.random() * (canvas.height - 20) + 10;
-        this.radius = 10;
+        this.radius = 12;
         this.exploding = false;
         this.explosionRadius = 0;
-        this.maxExplosionRadius = 100;
-        this.explosionSpeed = 5;
-        this.fuseTime = 100;
+        this.maxExplosionRadius = 120;
+        this.explosionSpeed = 6;
+        this.fuseTime = 80;
         this.currentFuseTime = this.fuseTime;
+        this.rotation = Math.random() * Math.PI * 2;
     }
 
     draw() {
         if (this.exploding) {
-            // Draw explosion
-            const gradient = ctx.createRadialGradient(
-                this.x, this.y, 0,
-                this.x, this.y, this.explosionRadius
-            );
-            gradient.addColorStop(0, 'rgba(255, 200, 0, 0.8)');
-            gradient.addColorStop(0.5, 'rgba(255, 100, 0, 0.6)');
-            gradient.addColorStop(1, 'rgba(255, 0, 0, 0.2)');
+            // Multi-layered explosion effect
+            const gradients = [
+                {
+                    radius: this.explosionRadius,
+                    colors: [
+                        { stop: 0, color: 'rgba(255, 200, 0, 0.9)' },
+                        { stop: 0.3, color: 'rgba(255, 100, 0, 0.7)' },
+                        { stop: 0.6, color: 'rgba(255, 50, 0, 0.5)' },
+                        { stop: 1, color: 'rgba(100, 0, 0, 0)' }
+                    ]
+                },
+                {
+                    radius: this.explosionRadius * 0.8,
+                    colors: [
+                        { stop: 0, color: 'rgba(255, 220, 100, 0.9)' },
+                        { stop: 0.5, color: 'rgba(255, 150, 50, 0.6)' },
+                        { stop: 1, color: 'rgba(255, 100, 0, 0)' }
+                    ]
+                }
+            ];
 
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.explosionRadius, 0, Math.PI * 2);
-            ctx.fillStyle = gradient;
-            ctx.fill();
-            ctx.closePath();
+            gradients.forEach(({ radius, colors }) => {
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, radius
+                );
+                colors.forEach(({ stop, color }) => gradient.addColorStop(stop, color));
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.closePath();
+            });
         } else {
-            // Draw bomb body
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = '#333';
-            ctx.fill();
-            ctx.closePath();
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
 
-            // Draw fuse
+            // Grenade body
             ctx.beginPath();
-            ctx.moveTo(this.x, this.y - this.radius);
-            ctx.quadraticCurveTo(
-                this.x + 5, this.y - this.radius - 10,
-                this.x + 10, this.y - this.radius - 5
-            );
-            ctx.strokeStyle = '#666';
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#2A3C28'; // Military green
+            ctx.fill();
+            ctx.strokeStyle = '#1A2C18';
             ctx.lineWidth = 2;
             ctx.stroke();
+            ctx.closePath();
 
-            // Draw fuse spark
-            if (this.currentFuseTime % 10 < 5) {
+            // Grenade top
+            ctx.beginPath();
+            ctx.rect(-4, -this.radius - 6, 8, 6);
+            ctx.fillStyle = '#404040';
+            ctx.fill();
+            ctx.strokeStyle = '#303030';
+            ctx.stroke();
+            ctx.closePath();
+
+            // Pin and handle
+            if (this.currentFuseTime > this.fuseTime * 0.8) {
                 ctx.beginPath();
-                ctx.arc(this.x + 10, this.y - this.radius - 5, 2, 0, Math.PI * 2);
-                ctx.fillStyle = 'yellow';
+                ctx.arc(-8, -this.radius - 3, 3, 0, Math.PI * 2);
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(-8, -this.radius);
+                ctx.lineTo(-12, -this.radius - 8);
+                ctx.stroke();
+            }
+
+            // Fuse spark
+            if (this.currentFuseTime % 6 < 3) {
+                ctx.beginPath();
+                ctx.arc(0, -this.radius - 6, 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#FFA500';
                 ctx.fill();
                 ctx.closePath();
             }
+
+            ctx.restore();
         }
     }
 
@@ -109,6 +150,7 @@ class Bomb {
             return this.explosionRadius > this.maxExplosionRadius;
         } else {
             this.currentFuseTime--;
+            this.rotation += 0.05;
             if (this.currentFuseTime <= 0) {
                 this.exploding = true;
                 sounds.playExplosion();
@@ -138,7 +180,7 @@ let gameOver = false;
 
 function spawnBomb() {
     if (bombs.length < 5) {
-        bombs.push(new Bomb());
+        bombs.push(new Grenade());
     }
 }
 
