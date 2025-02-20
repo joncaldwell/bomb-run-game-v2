@@ -2,6 +2,70 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const sounds = new GameSounds();
 
+class PowerUp {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type; // 'speed' or 'shield'
+        this.radius = 15;
+        this.active = true;
+        this.bobHeight = 0;
+        this.bobSpeed = 0.05;
+        this.bobTime = Math.random() * Math.PI * 2;
+    }
+
+    draw() {
+        if (!this.active) return;
+
+        this.bobTime += this.bobSpeed;
+        this.bobHeight = Math.sin(this.bobTime) * 5;
+
+        ctx.save();
+        ctx.translate(this.x, this.y + this.bobHeight);
+
+        // Glow effect
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+        if (this.type === 'speed') {
+            gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        } else {
+            gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+        }
+
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Icon
+        ctx.beginPath();
+        if (this.type === 'speed') {
+            // Lightning bolt
+            ctx.moveTo(-5, -8);
+            ctx.lineTo(2, -2);
+            ctx.lineTo(-2, 2);
+            ctx.lineTo(5, 8);
+            ctx.strokeStyle = '#00FFFF';
+        } else {
+            // Shield
+            ctx.arc(0, 0, 8, 0, Math.PI * 1.5);
+            ctx.strokeStyle = '#FFD700';
+        }
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    checkCollision(player) {
+        if (!this.active) return false;
+        const dx = this.x - player.x;
+        const dy = this.y - player.y;
+        return Math.sqrt(dx * dx + dy * dy) < (this.radius + player.radius);
+    }
+}
+
 class Player {
     constructor(x, y, color, controls) {
         this.x = x;
@@ -9,21 +73,85 @@ class Player {
         this.radius = 15;
         this.color = color;
         this.controls = controls;
-        this.speed = 5;
+        this.baseSpeed = 5;
+        this.speed = this.baseSpeed;
         this.alive = true;
         this.score = 0;
-        this.facing = 1; // 1 for right, -1 for left
+        this.facing = 1;
         this.walkFrame = 0;
         this.lastMoveTime = 0;
-
-        // Ragdoll physics properties
+        this.hasShield = false;
+        this.shieldTime = 0;
+        this.speedBoostTime = 0;
         this.isRagdoll = false;
+        this.ragdollTime = 0;
         this.velocityX = 0;
         this.velocityY = 0;
         this.rotation = 0;
         this.rotationSpeed = 0;
         this.gravity = 0.5;
         this.friction = 0.98;
+    }
+
+    update() {
+        // Update power-up timers
+        if (this.hasShield && Date.now() > this.shieldTime) {
+            this.hasShield = false;
+        }
+        if (this.speed > this.baseSpeed && Date.now() > this.speedBoostTime) {
+            this.speed = this.baseSpeed;
+        }
+
+        // Check ragdoll recovery
+        if (this.isRagdoll && Date.now() > this.ragdollTime) {
+            this.isRagdoll = false;
+            this.velocityX = 0;
+            this.velocityY = 0;
+            this.rotation = 0;
+            this.rotationSpeed = 0;
+        }
+    }
+
+    applyPowerUp(type) {
+        if (type === 'speed') {
+            this.speed = this.baseSpeed * 1.5;
+            this.speedBoostTime = Date.now() + 5000; // 5 seconds
+        } else if (type === 'shield') {
+            this.hasShield = true;
+            this.shieldTime = Date.now() + 5000; // 5 seconds
+        }
+    }
+
+    hit(explosionX, explosionY, explosionRadius) {
+        if (this.isRagdoll) return;
+
+        if (this.hasShield) {
+            this.hasShield = false;
+            return;
+        }
+
+        // Calculate direction and distance from explosion
+        const dx = this.x - explosionX;
+        const dy = this.y - explosionY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Calculate explosion force based on distance (stronger when closer)
+        const force = (1 - (distance / explosionRadius)) * 30;
+
+        // Normalize direction vector
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+
+        // Apply velocity in direction away from explosion with some randomness
+        this.velocityX = dirX * force * (0.8 + Math.random() * 0.4);
+        this.velocityY = dirY * force * (0.8 + Math.random() * 0.4);
+
+        // Add rotation based on impact angle
+        this.rotationSpeed = (Math.atan2(dy, dx) + Math.random() * 0.5 - 0.25) * 0.2;
+
+        // Enter ragdoll state with recovery timer
+        this.isRagdoll = true;
+        this.ragdollTime = Date.now() + 5000; // 5 seconds
     }
 
     draw() {
@@ -34,6 +162,15 @@ class Player {
         } else {
             if (!this.facing) this.facing = 1;
             ctx.scale(this.facing, 1);
+        }
+
+        // Draw shield if active
+        if (this.hasShield) {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius + 5, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
         }
 
         // Body
@@ -128,13 +265,13 @@ class Player {
                     const bounceCoefficient = 0.6;
 
                     // Calculate collision normal
-                    const centerX = f.x + f.width/2;
-                    const centerY = f.y + f.height/2;
+                    const centerX = f.x + f.width / 2;
+                    const centerY = f.y + f.height / 2;
                     const dx = this.x - centerX;
                     const dy = this.y - centerY;
 
                     // Determine which side was hit
-                    if (Math.abs(dx/f.width) > Math.abs(dy/f.height)) {
+                    if (Math.abs(dx / f.width) > Math.abs(dy / f.height)) {
                         // Horizontal collision
                         this.velocityX *= -bounceCoefficient;
                         this.x += this.velocityX; // Move away from collision
@@ -229,32 +366,6 @@ class Player {
         }
     }
 
-    hit(explosionX, explosionY, explosionRadius) {
-        if (this.isRagdoll) return;
-
-        // Calculate direction and distance from explosion
-        const dx = this.x - explosionX;
-        const dy = this.y - explosionY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        // Calculate explosion force based on distance (stronger when closer)
-        const force = (1 - (distance / explosionRadius)) * 30;
-
-        // Normalize direction vector
-        const dirX = dx / distance;
-        const dirY = dy / distance;
-
-        // Apply velocity in direction away from explosion with some randomness
-        this.velocityX = dirX * force * (0.8 + Math.random() * 0.4);
-        this.velocityY = dirY * force * (0.8 + Math.random() * 0.4);
-
-        // Add rotation based on impact angle
-        this.rotationSpeed = (Math.atan2(dy, dx) + Math.random() * 0.5 - 0.25) * 0.2;
-
-        // Enter ragdoll state
-        this.isRagdoll = true;
-    }
-
     darkenColor(color, percent) {
         const num = parseInt(color.replace('#', ''), 16);
         const amt = Math.round(2.55 * percent);
@@ -268,36 +379,63 @@ class Player {
 }
 
 class Furniture {
-    constructor(x, y, width, height, type) {
+    constructor(x, y, type) {
+        this.type = type;
+        this.setDimensions(type);
         this.x = x;
         this.y = y;
-        this.width = width;
-        this.height = height;
-        this.type = type;
         this.solid = Math.random() > 0.3; // 70% chance of being solid
         this.color = this.solid ? '#8B4513' : '#A0522D';
-        this.rotation = Math.random() * 0.2 - 0.1; // Slight random rotation
+        this.rotation = Math.random() * 0.2 - 0.1;
+    }
+
+    setDimensions(type) {
+        switch (type) {
+            case 'desk':
+                this.width = 120;
+                this.height = 60;
+                break;
+            case 'chair':
+                this.width = 40;
+                this.height = 40;
+                break;
+            case 'bookshelf':
+                this.width = 100;
+                this.height = 150;
+                break;
+            case 'table':
+                this.width = 150;
+                this.height = 80;
+                break;
+            case 'cabinet':
+                this.width = 80;
+                this.height = 120;
+                break;
+            default:
+                this.width = 60;
+                this.height = 60;
+        }
     }
 
     draw() {
         ctx.save();
-        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
         ctx.rotate(this.rotation);
 
         // Draw shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        ctx.fillRect(-this.width/2 + 5, -this.height/2 + 5, this.width, this.height);
+        ctx.fillRect(-this.width / 2 + 5, -this.height / 2 + 5, this.width, this.height);
 
         // Draw furniture
         ctx.fillStyle = this.color;
-        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
 
         // Add wood grain effect
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-        for(let i = 0; i < this.width; i += 10) {
+        for (let i = 0; i < this.width; i += 10) {
             ctx.beginPath();
-            ctx.moveTo(-this.width/2 + i, -this.height/2);
-            ctx.lineTo(-this.width/2 + i, this.height/2);
+            ctx.moveTo(-this.width / 2 + i, -this.height / 2);
+            ctx.lineTo(-this.width / 2 + i, this.height / 2);
             ctx.stroke();
         }
 
@@ -308,28 +446,28 @@ class Furniture {
         if (!this.solid) return false;
 
         // Basic rectangular collision
-        const dx = Math.abs((player.x) - (this.x + this.width/2));
-        const dy = Math.abs((player.y) - (this.y + this.height/2));
+        const dx = Math.abs((player.x) - (this.x + this.width / 2));
+        const dy = Math.abs((player.y) - (this.y + this.height / 2));
 
-        return dx < (this.width/2 + player.radius) && dy < (this.height/2 + player.radius);
+        return dx < (this.width / 2 + player.radius) && dy < (this.height / 2 + player.radius);
     }
 
     resolveCollision(player) {
         if (!this.solid) return;
 
         // Calculate overlap on each axis
-        const overlapX = (this.width/2 + player.radius) - Math.abs((player.x) - (this.x + this.width/2));
-        const overlapY = (this.height/2 + player.radius) - Math.abs((player.y) - (this.y + this.height/2));
+        const overlapX = (this.width / 2 + player.radius) - Math.abs((player.x) - (this.x + this.width / 2));
+        const overlapY = (this.height / 2 + player.radius) - Math.abs((player.y) - (this.y + this.height / 2));
 
         // Push back based on smallest overlap
         if (overlapX < overlapY) {
-            if (player.x < this.x + this.width/2) {
+            if (player.x < this.x + this.width / 2) {
                 player.x -= overlapX;
             } else {
                 player.x += overlapX;
             }
         } else {
-            if (player.y < this.y + this.height/2) {
+            if (player.y < this.y + this.height / 2) {
                 player.y -= overlapY;
             } else {
                 player.y += overlapY;
@@ -359,28 +497,28 @@ class Grenade {
                 {
                     radius: this.explosionRadius,
                     colors: [
-                        { stop: 0, color: 'rgba(255, 200, 0, 0.9)' },
-                        { stop: 0.3, color: 'rgba(255, 100, 0, 0.7)' },
-                        { stop: 0.6, color: 'rgba(255, 50, 0, 0.5)' },
-                        { stop: 1, color: 'rgba(100, 0, 0, 0)' }
+                        {stop: 0, color: 'rgba(255, 200, 0, 0.9)'},
+                        {stop: 0.3, color: 'rgba(255, 100, 0, 0.7)'},
+                        {stop: 0.6, color: 'rgba(255, 50, 0, 0.5)'},
+                        {stop: 1, color: 'rgba(100, 0, 0, 0)'}
                     ]
                 },
                 {
                     radius: this.explosionRadius * 0.8,
                     colors: [
-                        { stop: 0, color: 'rgba(255, 220, 100, 0.9)' },
-                        { stop: 0.5, color: 'rgba(255, 150, 50, 0.6)' },
-                        { stop: 1, color: 'rgba(255, 100, 0, 0)' }
+                        {stop: 0, color: 'rgba(255, 220, 100, 0.9)'},
+                        {stop: 0.5, color: 'rgba(255, 150, 50, 0.6)'},
+                        {stop: 1, color: 'rgba(255, 100, 0, 0)'}
                     ]
                 }
             ];
 
-            gradients.forEach(({ radius, colors }) => {
+            gradients.forEach(({radius, colors}) => {
                 const gradient = ctx.createRadialGradient(
                     this.x, this.y, 0,
                     this.x, this.y, radius
                 );
-                colors.forEach(({ stop, color }) => gradient.addColorStop(stop, color));
+                colors.forEach(({stop, color}) => gradient.addColorStop(stop, color));
 
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
@@ -471,12 +609,37 @@ const player2 = new Player(700, 300, '#dc3545', {
 let bombs = [];
 let keys = {};
 let gameOver = false;
+let powerUps = [];
 
 function spawnBomb() {
     if (bombs.length < 5) {
         bombs.push(new Grenade());
     }
 }
+
+function spawnPowerUp() {
+    if (powerUps.length < 3) {
+        const type = Math.random() < 0.5 ? 'speed' : 'shield';
+        let x, y, validPosition;
+        do {
+            validPosition = true;
+            x = Math.random() * (canvas.width - 40) + 20;
+            y = Math.random() * (canvas.height - 40) + 20;
+
+            // Check collision with furniture
+            furniture.forEach(f => {
+                const dx = Math.abs(x - (f.x + f.width / 2));
+                const dy = Math.abs(y - (f.y + f.height / 2));
+                if (dx < (f.width / 2 + 20) && dy < (f.height / 2 + 20)) {
+                    validPosition = false;
+                }
+            });
+        } while (!validPosition);
+
+        powerUps.push(new PowerUp(x, y, type));
+    }
+}
+
 
 function checkCollision(player, bomb) {
     if (!player.alive || player.isRagdoll) return false;
@@ -494,14 +657,16 @@ function checkCollision(player, bomb) {
     return false;
 }
 
-// Initialize furniture
+// Initialize furniture with specific types
 const furniture = [
-    new Furniture(100, 100, 80, 120, 'cabinet'),
-    new Furniture(300, 200, 150, 60, 'table'),
-    new Furniture(600, 400, 100, 100, 'box'),
-    new Furniture(400, 300, 90, 90, 'crate'),
-    new Furniture(200, 450, 120, 70, 'bench'),
-    new Furniture(500, 150, 70, 140, 'wardrobe')
+    new Furniture(100, 100, 'desk'),
+    new Furniture(300, 200, 'table'),
+    new Furniture(600, 400, 'bookshelf'),
+    new Furniture(400, 300, 'chair'),
+    new Furniture(200, 450, 'cabinet'),
+    new Furniture(500, 150, 'desk'),
+    new Furniture(150, 300, 'chair'),
+    new Furniture(450, 400, 'table')
 ];
 
 
@@ -511,9 +676,28 @@ function updateGame() {
     // Draw furniture
     furniture.forEach(f => f.draw());
 
+    // Draw and update power-ups
+    powerUps = powerUps.filter(powerUp => {
+        powerUp.draw();
+
+        // Check collision with players
+        if (powerUp.active) {
+            if (powerUp.checkCollision(player1)) {
+                player1.applyPowerUp(powerUp.type);
+                powerUp.active = false;
+                return false;
+            }
+            if (powerUp.checkCollision(player2)) {
+                player2.applyPowerUp(powerUp.type);
+                powerUp.active = false;
+                return false;
+            }
+        }
+        return powerUp.active;
+    });
+
     player1.move(keys);
     player2.move(keys);
-
     player1.draw();
     player2.draw();
 
@@ -570,4 +754,5 @@ window.addEventListener('keyup', (e) => {
 });
 
 setInterval(spawnBomb, 2000);
+setInterval(spawnPowerUp, 10000); // Spawn power-up every 10 seconds
 updateGame();
