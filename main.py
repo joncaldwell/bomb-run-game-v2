@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory
+from flask import Flask, render_template
 import logging
 
 # Configure logging
@@ -9,11 +9,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return send_from_directory('templates', 'index.html')
-
-@app.route('/static/<path:path>')
-def serve_static(path):
-    return send_from_directory('static', path)
+    return render_template('index.html')
 
 if __name__ == '__main__':
     logger.info("Starting Flask server...")
