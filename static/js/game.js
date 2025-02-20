@@ -120,34 +120,104 @@ class Player {
                 this.y < -50 || this.y > canvas.height + 50) {
                 this.alive = false;
             }
+
+            // Add furniture collision for ragdoll state with bouncing
+            furniture.forEach(f => {
+                if (f.checkCollision(this)) {
+                    // Bounce off furniture with energy loss
+                    const bounceCoefficient = 0.6;
+
+                    // Calculate collision normal
+                    const centerX = f.x + f.width/2;
+                    const centerY = f.y + f.height/2;
+                    const dx = this.x - centerX;
+                    const dy = this.y - centerY;
+
+                    // Determine which side was hit
+                    if (Math.abs(dx/f.width) > Math.abs(dy/f.height)) {
+                        // Horizontal collision
+                        this.velocityX *= -bounceCoefficient;
+                        this.x += this.velocityX; // Move away from collision
+                    } else {
+                        // Vertical collision
+                        this.velocityY *= -bounceCoefficient;
+                        this.y += this.velocityY; // Move away from collision
+                    }
+
+                    // Add some spin on collision
+                    this.rotationSpeed *= -0.8;
+                    this.rotationSpeed += (Math.random() - 0.5) * 0.2;
+                }
+            });
             return;
         }
 
         if (!this.alive) return;
 
+        let newX = this.x;
+        let newY = this.y;
         let moving = false;
 
-        if (keys[this.controls.up] && this.y > this.radius) {
-            this.y -= this.speed;
+        if (keys[this.controls.up]) {
+            newY -= this.speed;
             moving = true;
         }
-        if (keys[this.controls.down] && this.y < canvas.height - this.radius) {
-            this.y += this.speed;
+        if (keys[this.controls.down]) {
+            newY += this.speed;
             moving = true;
         }
-        if (keys[this.controls.left] && this.x > this.radius) {
-            this.x -= this.speed;
+        if (keys[this.controls.left]) {
+            newX -= this.speed;
             this.facing = -1;
             moving = true;
         }
-        if (keys[this.controls.right] && this.x < canvas.width - this.radius) {
-            this.x += this.speed;
+        if (keys[this.controls.right]) {
+            newX += this.speed;
             this.facing = 1;
             moving = true;
         }
 
+        // Boundary checks
+        newX = Math.max(this.radius, Math.min(canvas.width - this.radius, newX));
+        newY = Math.max(this.radius, Math.min(canvas.height - this.radius, newY));
+
+        // Check furniture collisions with the new position
+        let canMove = true;
+        let collisionCount = 0;
+
+        furniture.forEach(f => {
+            if (f.solid) {
+                // Create a test object to check collision at new position
+                const testPlayer = {
+                    x: newX,
+                    y: newY,
+                    radius: this.radius
+                };
+
+                if (f.checkCollision(testPlayer)) {
+                    collisionCount++;
+                    if (collisionCount > 1) {
+                        // Player is trapped between multiple pieces
+                        canMove = false;
+                    } else {
+                        // Try to slide along the furniture
+                        if (Math.abs(newX - this.x) > Math.abs(newY - this.y)) {
+                            newX = this.x; // Maintain X position, only move Y
+                        } else {
+                            newY = this.y; // Maintain Y position, only move X
+                        }
+                    }
+                }
+            }
+        });
+
+        if (canMove) {
+            this.x = newX;
+            this.y = newY;
+        }
+
         // Update walking animation
-        if (moving) {
+        if (moving && canMove) {
             const now = Date.now();
             if (now - this.lastMoveTime > 50) {
                 this.walkFrame += 0.3;
@@ -167,15 +237,19 @@ class Player {
         const dy = this.y - explosionY;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        // Calculate explosion force based on distance
+        // Calculate explosion force based on distance (stronger when closer)
         const force = (1 - (distance / explosionRadius)) * 30;
 
-        // Apply velocity in direction away from explosion
-        this.velocityX = (dx / distance) * force;
-        this.velocityY = (dy / distance) * force;
+        // Normalize direction vector
+        const dirX = dx / distance;
+        const dirY = dy / distance;
 
-        // Add some random rotation
-        this.rotationSpeed = (Math.random() - 0.5) * 0.5;
+        // Apply velocity in direction away from explosion with some randomness
+        this.velocityX = dirX * force * (0.8 + Math.random() * 0.4);
+        this.velocityY = dirY * force * (0.8 + Math.random() * 0.4);
+
+        // Add rotation based on impact angle
+        this.rotationSpeed = (Math.atan2(dy, dx) + Math.random() * 0.5 - 0.25) * 0.2;
 
         // Enter ragdoll state
         this.isRagdoll = true;
@@ -190,6 +264,77 @@ class Player {
         return '#' + (1 << 24 | (R < 255 ? (R < 0 ? 0 : R) : 255) << 16 |
             (G < 255 ? (G < 0 ? 0 : G) : 255) << 8 |
             (B < 255 ? (B < 0 ? 0 : B) : 255)).toString(16).slice(1);
+    }
+}
+
+class Furniture {
+    constructor(x, y, width, height, type) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.type = type;
+        this.solid = Math.random() > 0.3; // 70% chance of being solid
+        this.color = this.solid ? '#8B4513' : '#A0522D';
+        this.rotation = Math.random() * 0.2 - 0.1; // Slight random rotation
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+        ctx.rotate(this.rotation);
+
+        // Draw shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillRect(-this.width/2 + 5, -this.height/2 + 5, this.width, this.height);
+
+        // Draw furniture
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+
+        // Add wood grain effect
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+        for(let i = 0; i < this.width; i += 10) {
+            ctx.beginPath();
+            ctx.moveTo(-this.width/2 + i, -this.height/2);
+            ctx.lineTo(-this.width/2 + i, this.height/2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    checkCollision(player) {
+        if (!this.solid) return false;
+
+        // Basic rectangular collision
+        const dx = Math.abs((player.x) - (this.x + this.width/2));
+        const dy = Math.abs((player.y) - (this.y + this.height/2));
+
+        return dx < (this.width/2 + player.radius) && dy < (this.height/2 + player.radius);
+    }
+
+    resolveCollision(player) {
+        if (!this.solid) return;
+
+        // Calculate overlap on each axis
+        const overlapX = (this.width/2 + player.radius) - Math.abs((player.x) - (this.x + this.width/2));
+        const overlapY = (this.height/2 + player.radius) - Math.abs((player.y) - (this.y + this.height/2));
+
+        // Push back based on smallest overlap
+        if (overlapX < overlapY) {
+            if (player.x < this.x + this.width/2) {
+                player.x -= overlapX;
+            } else {
+                player.x += overlapX;
+            }
+        } else {
+            if (player.y < this.y + this.height/2) {
+                player.y -= overlapY;
+            } else {
+                player.y += overlapY;
+            }
+        }
     }
 }
 
@@ -349,8 +494,22 @@ function checkCollision(player, bomb) {
     return false;
 }
 
+// Initialize furniture
+const furniture = [
+    new Furniture(100, 100, 80, 120, 'cabinet'),
+    new Furniture(300, 200, 150, 60, 'table'),
+    new Furniture(600, 400, 100, 100, 'box'),
+    new Furniture(400, 300, 90, 90, 'crate'),
+    new Furniture(200, 450, 120, 70, 'bench'),
+    new Furniture(500, 150, 70, 140, 'wardrobe')
+];
+
+
 function updateGame() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw furniture
+    furniture.forEach(f => f.draw());
 
     player1.move(keys);
     player2.move(keys);
