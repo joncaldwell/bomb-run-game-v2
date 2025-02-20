@@ -15,13 +15,26 @@ class Player {
         this.facing = 1; // 1 for right, -1 for left
         this.walkFrame = 0;
         this.lastMoveTime = 0;
+
+        // Ragdoll physics properties
+        this.isRagdoll = false;
+        this.velocityX = 0;
+        this.velocityY = 0;
+        this.rotation = 0;
+        this.rotationSpeed = 0;
+        this.gravity = 0.5;
+        this.friction = 0.98;
     }
 
     draw() {
         ctx.save();
         ctx.translate(this.x, this.y);
-        if (!this.facing) this.facing = 1;
-        ctx.scale(this.facing, 1);
+        if (this.isRagdoll) {
+            ctx.rotate(this.rotation);
+        } else {
+            if (!this.facing) this.facing = 1;
+            ctx.scale(this.facing, 1);
+        }
 
         // Body
         const gradient = ctx.createLinearGradient(-this.radius, -this.radius * 2, this.radius, this.radius * 2);
@@ -29,7 +42,7 @@ class Player {
         gradient.addColorStop(1, this.darkenColor(this.color, 30));
 
         // Draw legs with walking animation
-        const legOffset = Math.sin(this.walkFrame) * 5;
+        const legOffset = this.isRagdoll ? 0 : Math.sin(this.walkFrame) * 5;
         ctx.beginPath();
         ctx.moveTo(-5, 0);
         ctx.lineTo(-8, 15 + (legOffset));
@@ -51,7 +64,7 @@ class Player {
         ctx.stroke();
 
         // Arms
-        const armOffset = Math.cos(this.walkFrame) * 3;
+        const armOffset = this.isRagdoll ? 10 : Math.cos(this.walkFrame) * 3;
         ctx.beginPath();
         ctx.moveTo(-this.radius, -5);
         ctx.lineTo(-this.radius - 8, 5 + armOffset);
@@ -79,7 +92,7 @@ class Player {
         ctx.stroke();
 
         // Eyes
-        const eyeOffset = this.facing * 2;
+        const eyeOffset = this.isRagdoll ? 0 : this.facing * 2;
         ctx.beginPath();
         ctx.arc(-3 + eyeOffset, -this.radius - 10, 2, 0, Math.PI * 2);
         ctx.arc(3 + eyeOffset, -this.radius - 10, 2, 0, Math.PI * 2);
@@ -89,18 +102,27 @@ class Player {
         ctx.restore();
     }
 
-    darkenColor(color, percent) {
-        const num = parseInt(color.replace('#', ''), 16);
-        const amt = Math.round(2.55 * percent);
-        const R = (num >> 16) - amt;
-        const G = (num >> 8 & 0x00FF) - amt;
-        const B = (num & 0x0000FF) - amt;
-        return '#' + (1 << 24 | (R < 255 ? (R < 0 ? 0 : R) : 255) << 16 |
-            (G < 255 ? (G < 0 ? 0 : G) : 255) << 8 |
-            (B < 255 ? (B < 0 ? 0 : B) : 255)).toString(16).slice(1);
-    }
-
     move(keys) {
+        if (this.isRagdoll) {
+            // Apply physics when in ragdoll state
+            this.x += this.velocityX;
+            this.y += this.velocityY;
+            this.rotation += this.rotationSpeed;
+
+            // Apply gravity and friction
+            this.velocityY += this.gravity;
+            this.velocityX *= this.friction;
+            this.velocityY *= this.friction;
+            this.rotationSpeed *= this.friction;
+
+            // Check if player is off screen
+            if (this.x < -50 || this.x > canvas.width + 50 ||
+                this.y < -50 || this.y > canvas.height + 50) {
+                this.alive = false;
+            }
+            return;
+        }
+
         if (!this.alive) return;
 
         let moving = false;
@@ -135,6 +157,39 @@ class Player {
         } else {
             this.walkFrame = 0;
         }
+    }
+
+    hit(explosionX, explosionY, explosionRadius) {
+        if (this.isRagdoll) return;
+
+        // Calculate direction and distance from explosion
+        const dx = this.x - explosionX;
+        const dy = this.y - explosionY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Calculate explosion force based on distance
+        const force = (1 - (distance / explosionRadius)) * 30;
+
+        // Apply velocity in direction away from explosion
+        this.velocityX = (dx / distance) * force;
+        this.velocityY = (dy / distance) * force;
+
+        // Add some random rotation
+        this.rotationSpeed = (Math.random() - 0.5) * 0.5;
+
+        // Enter ragdoll state
+        this.isRagdoll = true;
+    }
+
+    darkenColor(color, percent) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = (num >> 16) - amt;
+        const G = (num >> 8 & 0x00FF) - amt;
+        const B = (num & 0x0000FF) - amt;
+        return '#' + (1 << 24 | (R < 255 ? (R < 0 ? 0 : R) : 255) << 16 |
+            (G < 255 ? (G < 0 ? 0 : G) : 255) << 8 |
+            (B < 255 ? (B < 0 ? 0 : B) : 255)).toString(16).slice(1);
     }
 }
 
@@ -279,15 +334,19 @@ function spawnBomb() {
 }
 
 function checkCollision(player, bomb) {
-    if (!player.alive) return false;
+    if (!player.alive || player.isRagdoll) return false;
 
     const distance = Math.sqrt(
         Math.pow(player.x - bomb.x, 2) +
         Math.pow(player.y - bomb.y, 2)
     );
 
-    return bomb.exploding &&
-        distance < (player.radius + bomb.explosionRadius);
+    if (bomb.exploding && distance < (player.radius + bomb.explosionRadius)) {
+        player.hit(bomb.x, bomb.y, bomb.explosionRadius);
+        return true;
+    }
+
+    return false;
 }
 
 function updateGame() {
@@ -306,11 +365,9 @@ function updateGame() {
         const finished = bomb.update();
 
         if (checkCollision(player1, bomb)) {
-            player1.alive = false;
             shouldEndGame = true;
         }
         if (checkCollision(player2, bomb)) {
-            player2.alive = false;
             shouldEndGame = true;
         }
 
@@ -318,14 +375,14 @@ function updateGame() {
     });
 
     if ((player1.alive || player2.alive) && !gameOver) {
-        if (player1.alive) player1.score++;
-        if (player2.alive) player2.score++;
+        if (player1.alive && !player1.isRagdoll) player1.score++;
+        if (player2.alive && !player2.isRagdoll) player2.score++;
 
         document.getElementById('score1').textContent = player1.score;
         document.getElementById('score2').textContent = player2.score;
     }
 
-    if (!gameOver && (shouldEndGame || (!player1.alive && !player2.alive))) {
+    if (!gameOver && (!player1.alive && !player2.alive)) {
         gameOver = true;
         sounds.playGameOver();
         const gameOverDiv = document.getElementById('gameOver');
