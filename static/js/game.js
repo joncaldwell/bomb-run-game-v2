@@ -24,7 +24,7 @@ class Player {
 
     move(keys) {
         if (!this.alive) return;
-        
+
         if (keys[this.controls.up] && this.y > this.radius) {
             this.y -= this.speed;
             sounds.playMove();
@@ -88,10 +88,10 @@ const player1 = new Player(100, 300, '#007bff', {
 });
 
 const player2 = new Player(700, 300, '#dc3545', {
-    up: 'ArrowUp',
-    down: 'ArrowDown',
-    left: 'ArrowLeft',
-    right: 'ArrowRight'
+    up: 'arrowup',
+    down: 'arrowdown',
+    left: 'arrowleft',
+    right: 'arrowright'
 });
 
 let bombs = [];
@@ -106,12 +106,12 @@ function spawnBomb() {
 
 function checkCollision(player, bomb) {
     if (!player.alive) return false;
-    
+
     const distance = Math.sqrt(
         Math.pow(player.x - bomb.x, 2) + 
         Math.pow(player.y - bomb.y, 2)
     );
-    
+
     return bomb.exploding && 
            distance < (player.radius + bomb.explosionRadius);
 }
@@ -127,7 +127,7 @@ function updateGame() {
 
     bombs = bombs.filter(bomb => {
         bomb.draw();
-        
+
         if (!bomb.exploding && Math.random() < 0.01) {
             bomb.exploding = true;
             sounds.playExplosion();
@@ -146,7 +146,7 @@ function updateGame() {
     if ((player1.alive || player2.alive) && !gameOver) {
         if (player1.alive) player1.score++;
         if (player2.alive) player2.score++;
-        
+
         document.getElementById('score1').textContent = player1.score;
         document.getElementById('score2').textContent = player2.score;
     }
@@ -157,7 +157,7 @@ function updateGame() {
         const gameOverDiv = document.getElementById('gameOver');
         const winner = document.getElementById('winner');
         gameOverDiv.classList.remove('d-none');
-        
+
         if (player1.score > player2.score) {
             winner.textContent = "Player 1 Wins!";
         } else if (player2.score > player1.score) {
