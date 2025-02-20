@@ -742,9 +742,11 @@ const furniture = [
     new Furniture(450, 400, 'table')
 ];
 
-
 function updateGame() {
     if (gameOver) return;
+
+    // Debug logging
+    console.log('Game loop running');
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -754,20 +756,6 @@ function updateGame() {
     // Draw and update power-ups
     powerUps = powerUps.filter(powerUp => {
         powerUp.draw();
-
-        // Check collision with players
-        if (powerUp.active) {
-            if (powerUp.checkCollision(player1)) {
-                player1.applyPowerUp(powerUp.type);
-                powerUp.active = false;
-                return false;
-            }
-            if (powerUp.checkCollision(player2)) {
-                player2.applyPowerUp(powerUp.type);
-                powerUp.active = false;
-                return false;
-            }
-        }
         return powerUp.active;
     });
 
@@ -781,22 +769,22 @@ function updateGame() {
     const players = [player1, player2].sort((a, b) => a.y - b.y);
     players.forEach(player => player.draw());
 
-    let shouldEndGame = false;
-
+    // Update bombs
     bombs = bombs.filter(bomb => {
         bomb.draw();
         const finished = bomb.update();
 
         if (checkCollision(player1, bomb)) {
-            shouldEndGame = true;
+            player1.hit(bomb.x, bomb.y, bomb.explosionRadius);
         }
         if (checkCollision(player2, bomb)) {
-            shouldEndGame = true;
+            player2.hit(bomb.x, bomb.y, bomb.explosionRadius);
         }
 
         return !finished;
     });
 
+    // Update scores
     if ((player1.alive || player2.alive) && !gameOver) {
         if (player1.alive && !player1.isRagdoll) player1.score++;
         if (player2.alive && !player2.isRagdoll) player2.score++;
@@ -822,15 +810,16 @@ window.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
-// Ensure the game has focus
-canvas.tabIndex = 1;
-canvas.focus();
-
-// Initialize game
-canvas.addEventListener('click', () => {
+// Initialize game immediately when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Game initializing...');
+    canvas.tabIndex = 1;
     canvas.focus();
-});
 
-setInterval(spawnBomb, 2000);
-setInterval(spawnPowerUp, 10000); // Spawn power-up every 10 seconds
-updateGame();
+    // Start game systems
+    setInterval(spawnBomb, 2000);
+    setInterval(spawnPowerUp, 10000);
+
+    // Start game loop
+    updateGame();
+});
