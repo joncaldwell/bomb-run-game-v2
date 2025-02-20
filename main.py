@@ -1,14 +1,20 @@
-from flask import Flask, render_template
+from flask import Flask, send_from_directory
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return send_from_directory('templates', 'index.html')
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 
 if __name__ == '__main__':
+    logger.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=5000, debug=True)
