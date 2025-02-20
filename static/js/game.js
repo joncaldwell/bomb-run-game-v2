@@ -696,10 +696,15 @@ function updateGame() {
         return powerUp.active;
     });
 
+    // Update player positions and states
+    player1.update();
+    player2.update();
     player1.move(keys);
     player2.move(keys);
-    player1.draw();
-    player2.draw();
+
+    // Draw players in correct order (based on Y position)
+    const players = [player1, player2].sort((a, b) => a.y - b.y);
+    players.forEach(player => player.draw());
 
     let shouldEndGame = false;
 
