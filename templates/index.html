@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bomb Dodge Game</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1>Bomb Dodge Game</h1>
+                <div class="score-container mb-3">
+                    <span class="badge bg-primary me-3">Player 1: <span id="score1">0</span></span>
+                    <span class="badge bg-danger">Player 2: <span id="score2">0</span></span>
+                </div>
+                <div class="controls-info mb-3">
+                    <p>Player 1: WASD | Player 2: Arrow Keys</p>
+                </div>
+                <canvas id="gameCanvas" width="800" height="600"></canvas>
+                <div id="gameOver" class="game-over d-none">
+                    <h2>Game Over!</h2>
+                    <p id="winner"></p>
+                    <button class="btn btn-secondary" onclick="location.reload()">Play Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+</body>
+</html>
