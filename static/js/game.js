@@ -2,6 +2,61 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const sounds = new GameSounds();
 
+class PlayerSkin {
+    constructor(baseColor, accentColor, accessory) {
+        this.baseColor = baseColor;
+        this.accentColor = accentColor;
+        this.accessory = accessory; // 'hat', 'glasses', 'cape'
+        this.headGradient = {
+            light: '#FFE0C4',
+            dark: '#FFB088'
+        };
+    }
+
+    getAccessoryPath(ctx) {
+        ctx.strokeStyle = this.accentColor;
+        ctx.lineWidth = 2;
+
+        switch(this.accessory) {
+            case 'hat':
+                // Top hat
+                ctx.beginPath();
+                ctx.rect(-8, -this.radius - 25, 16, 5);
+                ctx.rect(-6, -this.radius - 35, 12, 10);
+                ctx.fillStyle = this.accentColor;
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case 'glasses':
+                // Cool glasses
+                ctx.beginPath();
+                ctx.arc(-4, -this.radius - 10, 3, 0, Math.PI * 2);
+                ctx.moveTo(4, -this.radius - 10);
+                ctx.arc(4, -this.radius - 10, 3, 0, Math.PI * 2);
+                ctx.moveTo(-1, -this.radius - 10);
+                ctx.lineTo(1, -this.radius - 10);
+                ctx.stroke();
+                break;
+            case 'cape':
+                // Flowing cape
+                ctx.beginPath();
+                ctx.moveTo(-this.radius, -5);
+                ctx.quadraticCurveTo(
+                    -this.radius - 15, 10,
+                    -this.radius - 10, 25
+                );
+                ctx.quadraticCurveTo(
+                    -this.radius - 5, 20,
+                    -this.radius, 15
+                );
+                ctx.fillStyle = this.accentColor;
+                ctx.fill();
+                ctx.stroke();
+                break;
+        }
+    }
+}
+
 class PowerUp {
     constructor(x, y, type) {
         this.x = x;
@@ -67,7 +122,7 @@ class PowerUp {
 }
 
 class Player {
-    constructor(x, y, color, controls) {
+    constructor(x, y, color, controls, skin) {
         this.x = x;
         this.y = y;
         this.radius = 15;
@@ -91,6 +146,7 @@ class Player {
         this.rotationSpeed = 0;
         this.gravity = 0.5;
         this.friction = 0.98;
+        this.skin = skin || new PlayerSkin(color, this.darkenColor(color, 30), 'none');
     }
 
     update() {
@@ -175,8 +231,8 @@ class Player {
 
         // Body
         const gradient = ctx.createLinearGradient(-this.radius, -this.radius * 2, this.radius, this.radius * 2);
-        gradient.addColorStop(0, this.color);
-        gradient.addColorStop(1, this.darkenColor(this.color, 30));
+        gradient.addColorStop(0, this.skin.baseColor);
+        gradient.addColorStop(1, this.skin.accentColor);
 
         // Draw legs with walking animation
         const legOffset = this.isRagdoll ? 0 : Math.sin(this.walkFrame) * 5;
@@ -187,7 +243,7 @@ class Player {
         ctx.moveTo(5, 0);
         ctx.lineTo(8, 15 - (legOffset));
         ctx.lineTo(6, 25 - (legOffset));
-        ctx.strokeStyle = this.darkenColor(this.color, 40);
+        ctx.strokeStyle = this.darkenColor(this.skin.baseColor, 40);
         ctx.lineWidth = 4;
         ctx.stroke();
 
@@ -196,7 +252,7 @@ class Player {
         ctx.ellipse(0, -5, this.radius, this.radius * 1.5, 0, 0, Math.PI * 2);
         ctx.fillStyle = gradient;
         ctx.fill();
-        ctx.strokeStyle = this.darkenColor(this.color, 20);
+        ctx.strokeStyle = this.darkenColor(this.skin.baseColor, 20);
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -207,7 +263,7 @@ class Player {
         ctx.lineTo(-this.radius - 8, 5 + armOffset);
         ctx.moveTo(this.radius, -5);
         ctx.lineTo(this.radius + 8, 5 - armOffset);
-        ctx.strokeStyle = this.darkenColor(this.color, 40);
+        ctx.strokeStyle = this.darkenColor(this.skin.baseColor, 40);
         ctx.lineWidth = 4;
         ctx.stroke();
 
@@ -220,13 +276,18 @@ class Player {
             0, -this.radius - 10,
             this.radius * 0.7
         );
-        headGradient.addColorStop(0, '#FFE0C4');
-        headGradient.addColorStop(1, '#FFB088');
+        headGradient.addColorStop(0, this.skin.headGradient.light);
+        headGradient.addColorStop(1, this.skin.headGradient.dark);
         ctx.fillStyle = headGradient;
         ctx.fill();
         ctx.strokeStyle = '#704214';
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Draw accessory if any
+        if (this.skin.accessory !== 'none') {
+            this.skin.getAccessoryPath.call(this, ctx);
+        }
 
         // Eyes
         const eyeOffset = this.isRagdoll ? 0 : this.facing * 2;
@@ -336,26 +397,29 @@ class Player {
         let collisionCount = 0;
 
         furniture.forEach(f => {
-            if (f.solid) {
-                // Create a test object to check collision at new position
-                const testPlayer = {
-                    x: newX,
-                    y: newY,
-                    radius: this.radius
-                };
+            // Create a test object to check collision at new position
+            const testPlayer = {
+                x: newX,
+                y: newY,
+                radius: this.radius
+            };
 
-                if (f.checkCollision(testPlayer)) {
-                    collisionCount++;
-                    if (collisionCount > 1) {
-                        // Player is trapped between multiple pieces
-                        canMove = false;
+            if (f.checkCollision(testPlayer)) {
+                // Only allow passing through if player has speed power-up
+                if (this.speed > this.baseSpeed) {
+                    return; // Skip collision handling
+                }
+
+                collisionCount++;
+                if (collisionCount > 1) {
+                    // Player is trapped between multiple pieces
+                    canMove = false;
+                } else {
+                    // Try to slide along the furniture
+                    if (Math.abs(newX - this.x) > Math.abs(newY - this.y)) {
+                        newX = this.x; // Maintain X position, only move Y
                     } else {
-                        // Try to slide along the furniture
-                        if (Math.abs(newX - this.x) > Math.abs(newY - this.y)) {
-                            newX = this.x; // Maintain X position, only move Y
-                        } else {
-                            newY = this.y; // Maintain Y position, only move X
-                        }
+                        newY = this.y; // Maintain Y position, only move X
                     }
                 }
             }
@@ -397,8 +461,8 @@ class Furniture {
         this.setDimensions(type);
         this.x = x;
         this.y = y;
-        this.solid = Math.random() > 0.3; // 70% chance of being solid
-        this.color = this.solid ? '#8B4513' : '#A0522D';
+        this.solid = true; // Always solid by default
+        this.color = '#8B4513';
         this.rotation = Math.random() * 0.2 - 0.1;
     }
 
@@ -456,8 +520,6 @@ class Furniture {
     }
 
     checkCollision(player) {
-        if (!this.solid) return false;
-
         // Basic rectangular collision
         const dx = Math.abs((player.x) - (this.x + this.width / 2));
         const dy = Math.abs((player.y) - (this.y + this.height / 2));
@@ -466,8 +528,6 @@ class Furniture {
     }
 
     resolveCollision(player) {
-        if (!this.solid) return;
-
         // Calculate overlap on each axis
         const overlapX = (this.width / 2 + player.radius) - Math.abs((player.x) - (this.x + this.width / 2));
         const overlapY = (this.height / 2 + player.radius) - Math.abs((player.y) - (this.y + this.height / 2));
@@ -610,14 +670,14 @@ const player1 = new Player(100, 300, '#007bff', {
     down: 's',
     left: 'a',
     right: 'd'
-});
+}, new PlayerSkin('#007bff', '#0056b3', 'cape'));
 
 const player2 = new Player(700, 300, '#dc3545', {
     up: 'arrowup',
     down: 'arrowdown',
     left: 'arrowleft',
     right: 'arrowright'
-});
+}, new PlayerSkin('#dc3545', '#b21f2d', 'glasses'));
 
 let bombs = [];
 let keys = {};
