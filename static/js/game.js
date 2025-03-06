@@ -801,7 +801,7 @@ const player2 = new Player(700, 300, '#dc3545', {
     down: 'arrowdown',
     left: 'arrowleft',
     right: 'arrowright',
-    shoot: 'Enter'
+    shoot: 'enter'  // Changed from 'Enter' to 'enter'
 }, new PlayerSkin('#dc3545', '#b21f2d', 'glasses'));
 
 let bombs = [];
@@ -963,6 +963,7 @@ function updateGame() {
 window.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
     keys[key] = true;
+    console.log('Key pressed:', key); // Debug logging
     // Prevent default behavior for game controls
     if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'enter'].includes(key)) {
         e.preventDefault();
@@ -970,8 +971,9 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('keyup', (e) => {
-    console.log('Key released:', e.key.toLowerCase());
-    keys[e.key.toLowerCase()] = false;
+    const key = e.key.toLowerCase();
+    console.log('Key released:', key); // Debug logging
+    keys[key] = false;
 });
 
 // Initialize game immediately when the page loads
