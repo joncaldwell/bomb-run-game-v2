@@ -131,11 +131,22 @@ class Paintball {
         this.color = color;
         this.speed = 15;
         this.active = true;
+        this.trail = [];
+        this.maxTrailLength = 5;
     }
 
     update() {
+        // Add current position to trail
+        this.trail.push({x: this.x, y: this.y});
+        if (this.trail.length > this.maxTrailLength) {
+            this.trail.shift();
+        }
+
         this.x += this.dx * this.speed;
         this.y += this.dy * this.speed;
+
+        // Add slight gravity effect
+        this.dy += 0.1;
 
         // Check if paintball is off screen
         return this.x < 0 || this.x > canvas.width || 
@@ -145,19 +156,29 @@ class Paintball {
     draw() {
         if (!this.active) return;
 
+        // Draw trail
+        this.trail.forEach((pos, i) => {
+            const alpha = i / this.maxTrailLength;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, this.radius * (1 - alpha * 0.5), 0, Math.PI * 2);
+            ctx.fillStyle = `${this.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+            ctx.fill();
+        });
+
+        // Draw paintball
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.fill();
 
-        // Add paint splatter effect
-        const gradient = ctx.createRadialGradient(
-            this.x, this.y, 0,
-            this.x, this.y, this.radius * 2
+        // Add shine effect
+        const shine = ctx.createRadialGradient(
+            this.x - this.radius/2, this.y - this.radius/2, 0,
+            this.x, this.y, this.radius
         );
-        gradient.addColorStop(0, `${this.color}44`);
-        gradient.addColorStop(1, 'transparent');
-        ctx.fillStyle = gradient;
+        shine.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+        shine.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = shine;
         ctx.fill();
     }
 
@@ -199,7 +220,7 @@ class Player {
         this.friction = 0.98;
         this.skin = skin || new PlayerSkin(color, this.darkenColor(color, 30), 'none');
         this.lastShotTime = 0;
-        this.shootCooldown = 500; // 500ms between shots
+        this.shootCooldown = 3000; // Changed to 3 seconds (3000ms)
     }
 
     update() {
@@ -308,6 +329,34 @@ class Player {
         ctx.strokeStyle = this.darkenColor(this.skin.baseColor, 20);
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Draw paintball gun
+        const gunLength = 20;
+        ctx.beginPath();
+        // Gun body
+        ctx.rect(this.radius, -10, gunLength, 8);
+        ctx.fillStyle = '#333';
+        ctx.fill();
+        // Gun hopper
+        ctx.beginPath();
+        ctx.arc(this.radius + 10, -15, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#666';
+        ctx.fill();
+        // Gun details
+        ctx.beginPath();
+        ctx.rect(this.radius + gunLength - 2, -8, 4, 4);
+        ctx.fillStyle = '#222';
+        ctx.fill();
+
+        // Draw cooldown indicator
+        const cooldownProgress = Math.min(1, (Date.now() - this.lastShotTime) / this.shootCooldown);
+        if (cooldownProgress < 1) {
+            ctx.beginPath();
+            ctx.arc(this.radius + 10, -15, 4, 0, Math.PI * 2 * cooldownProgress);
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
 
         // Arms
         const armOffset = this.isRagdoll ? 10 : Math.cos(this.walkFrame) * 3;
@@ -506,8 +555,8 @@ class Player {
         const dy = 0;
 
         paintballs.push(new Paintball(
-            this.x + this.facing * this.radius,
-            this.y - this.radius / 2,
+            this.x + this.facing * (this.radius + 20), // Adjust starting position to gun tip
+            this.y - 8, // Adjust to gun height
             dx,
             dy,
             this.color
@@ -779,7 +828,7 @@ function spawnPowerUp() {
             // Check collision with furniture
             furniture.forEach(f => {
                 const dx = Math.abs(x - (f.x + f.width / 2));
-                const dy = Math.abs(y - (f.y + f.height / 2));
+                const dy = Math.abs(y - (f.y + f.height /2));
                 if (dx < (f.width / 2 + 20) && dy < (f.height / 2 + 20)) {
                     validPosition = false;
                 }
@@ -912,10 +961,10 @@ function updateGame() {
 }
 
 window.addEventListener('keydown', (e) => {
-    console.log('Key pressed:', e.key.toLowerCase());
-    keys[e.key.toLowerCase()] = true;
+    const key = e.key.toLowerCase();
+    keys[key] = true;
     // Prevent default behavior for game controls
-    if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'Enter'].includes(e.key.toLowerCase())) {
+    if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'enter'].includes(key)) {
         e.preventDefault();
     }
 });
