@@ -6,9 +6,11 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.secret_key = 'dev_key_for_session'  # For development only
 
 @app.route('/')
 def index():
+    logger.debug("Serving index page")
     return render_template('index.html')
 
 if __name__ == '__main__':
